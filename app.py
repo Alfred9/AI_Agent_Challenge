@@ -1,6 +1,4 @@
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+import streamlit as st
 import yt_dlp
 import moviepy.editor as mp
 import os
@@ -15,27 +13,47 @@ import logging
 from pydub import AudioSegment
 import ffmpeg
 
-app = FastAPI()
-templates = Jinja2Templates(directory="templates")
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Set torchaudio backend
-torchaudio.set_audio_backend("soundfile")
-logger.info("Torchaudio backend set to soundfile.")
+try:
+    torchaudio.set_audio_backend("soundfile")
+    logger.info("Torchaudio backend set to soundfile.")
+except Exception as e:
+    logger.warning(f"Failed to set torchaudio backend: {str(e)}")
 
-# Load models at startup
-logger.info("Loading accent model...")
-accent_model = EncoderClassifier.from_hparams(
-    source="Jzuluaga/accent-id-commonaccent_ecapa",
-    savedir="pretrained_models/accent-id-commonaccent_ecapa"
-)
-logger.info("Loading language model...")
-lang_model = LangID.from_hparams(
-    source="speechbrain/lang-id-voxlingua107-ecapa",
-    savedir="pretrained_models/lang-id-voxlingua107-ecapa"
-)
+# Cache models
+@st.cache_resource
+def load_accent_model():
+    logger.info("Loading accent model...")
+    try:
+        model = EncoderClassifier.from_hparams(
+            source="Jzuluaga/accent-id-commonaccent_ecapa",
+            savedir="pretrained_models/accent-id-commonaccent_ecapa"
+        )
+        logger.info("Accent model loaded successfully.")
+        return model
+    except Exception as e:
+        logger.error(f"Failed to load accent model: {str(e)}")
+        raise
 
+@st.cache_resource
+def load_lang_model():
+    logger.info("Loading language model...")
+    try:
+        model = LangID.from_hparams(
+            source="speechbrain/lang-id-voxlingua107-ecapa",
+            savedir="pretrained_models/lang-id-voxlingua107-ecapa"
+        )
+        logger.info("Language model loaded successfully.")
+        return model
+    except Exception as e:
+        logger.error(f"Failed to load language model: {str(e)}")
+        raise
+
+# Function to probe video metadata
 def probe_video(video_path):
     try:
         probe = ffmpeg.probe(video_path)
@@ -45,24 +63,30 @@ def probe_video(video_path):
         logger.error(f"FFmpeg probe failed: {str(e)}")
         return None
 
+# Function to download video and extract audio
 def download_and_extract_audio(video_url):
-    with tempfile.TemporaryDirectory() as temp_dir:
+    try:
+        logger.info(f"Downloading video: {video_url}")
+        temp_dir = tempfile.mkdtemp()
         ydl_opts = {
             'format': 'best[ext=mp4]',
             'outtmpl': os.path.join(temp_dir, 'video.%(ext)s'),
             'quiet': True,
-            'max_duration': 240,
+            'max_duration': 240,  # 4 minutes
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
             video_path = ydl.prepare_filename(info)
         
+        logger.info("Probing video metadata...")
         fps = probe_video(video_path)
         logger.info(f"Video FPS: {fps}")
         
+        logger.info("Extracting audio...")
         try:
             video_clip = mp.VideoFileClip(video_path)
         except Exception as e:
+            logger.error(f"MoviePy failed: {str(e)}")
             if 'video_fps' in str(e):
                 video_clip = mp.VideoFileClip(video_path, fps_source='mp4')
             else:
@@ -73,24 +97,31 @@ def download_and_extract_audio(video_url):
         audio_path = os.path.join(temp_dir, "audio.wav")
         video_clip.audio.write_audiofile(audio_path)
         video_clip.close()
-        return audio_path
+        logger.info("Audio extracted successfully.")
+        return audio_path, temp_dir
+    except Exception as e:
+        logger.error(f"Error downloading or extracting audio: {video_url}: {str(e)}")
+        st.error(f"Error downloading or extracting audio: {str(e)}")
+        return None, None
 
+# Function to detect speech in audio chunk
 def is_speech(audio_path, threshold=0.01):
     try:
         y, sr = librosa.load(audio_path, sr=None)
         rms = librosa.feature.rms(y=y)[0]
         return np.mean(rms) > threshold
     except Exception as e:
-        logger.error(f"Speech detection failed: {str(e)}")
+        logger.error(f"Speech detection failed for {audio_path}: {str(e)}")
         return False
 
+# Function to split audio into chunks
 def split_audio(audio_path, chunk_length_ms=30000):
     try:
-        audio = AudioSegment.from_wav(audio_path)
+        audio_chunk = AudioSegment.from_wav(audio_path)
         chunks = []
         temp_dir = os.path.dirname(audio_path)
-        for i in range(0, len(audio), chunk_length_ms):
-            chunk = audio[i:i + chunk_length_ms]
+        for i in range(0, len(audio_chunk), chunk_length_ms):
+            chunk = audio_chunk[i:i + chunk_length_ms]
             chunk_path = os.path.join(temp_dir, f"chunk_{i//1000}.wav")
             chunk.export(chunk_path, format="wav")
             if is_speech(chunk_path):
@@ -103,8 +134,10 @@ def split_audio(audio_path, chunk_length_ms=30000):
         logger.error(f"Error splitting audio: {str(e)}")
         return [audio_path]
 
+# Function to detect language
 def detect_language(audio_path):
     try:
+        lang_model = load_lang_model()
         out_prob, score, index, text_lab = lang_model.classify_file(audio_path)
         language = text_lab[0].lower()  # e.g., 'en:english', 'fr:french'
         confidence = float(score) * 100
@@ -114,93 +147,123 @@ def detect_language(audio_path):
         logger.error(f"Language detection failed: {str(e)}")
         return False, 0.0
 
+# Function to analyze accent
 def analyze_accent(audio_path):
-    is_english, lang_confidence = detect_language(audio_path)
-    if not is_english:
-        raise ValueError(f"Non-English speech detected (confidence: {lang_confidence:.2f}%). Please provide a video with English speech.")
-
-    audio_chunks = split_audio(audio_path)
-    if not audio_chunks:
-        raise ValueError("No valid speech chunks detected.")
-
-    predictions = []
-    
-    for chunk_path in audio_chunks:
-        try:
-            out_prob, score, index, text_lab = accent_model.classify_file(chunk_path)
-            predicted_class = text_lab[0].lower()
-            confidence = float(score) * 100
-            
-            accent_map = {
-                "england": "British",
-                "scotland": "British",
-                "wales": "British",
-                "us": "American",
-                "australia": "Australian",
-                "canada": "Canadian",
-                "ireland": "Irish",
-                "newzealand": "New Zealander",
-                "bermuda": "Bermudian",
-                "hongkong": "Hong Kong",
-                "indian": "Indian",
-                "malaysia": "Malaysian",
-                "philippines": "Philippine",
-                "singapore": "Singaporean",
-                "southatlandtic": "South Atlantic",
-                "african": "African"
-            }
-            mapped_accent = accent_map.get(predicted_class, "Other")
-            
-            is_english_accent = mapped_accent in ["British", "American", "Australian", "Canadian", "Irish", "New Zealander"]
-            english_confidence = confidence if is_english_accent else (100 - confidence)
-            
-            predictions.append({
-                "accent": mapped_accent,
-                "english_confidence": english_confidence,
-                "confidence": confidence,
-                "language_code": predicted_class
-            })
-        except Exception as e:
-            logger.error(f"Error processing chunk {chunk_path}: {str(e)}")
-            continue
-    
-    if not predictions:
-        raise ValueError("No valid accent predictions from audio chunks.")
-    
-    accents = [p["accent"] for p in predictions]
-    most_common_accent = max(set(accents), key=accents.count)
-    english_confidences = [p["english_confidence"] for p in predictions if p["accent"] != "Other"]
-    avg_english_confidence = np.mean(english_confidences) if english_confidences else 0.0
-    avg_confidence = np.mean([p["confidence"] for p in predictions])
-    language_codes = [p["language_code"] for p in predictions]
-    
-    logger.info(f"Predicted language codes: {language_codes}")
-    
-    summary = (
-        f"The detected accent is {most_common_accent} with a confidence of {avg_confidence:.2f}%. "
-        f"The likelihood of an English-native accent (British, American, Australian, Canadian, Irish, New Zealander) is {avg_english_confidence:.2f}%. "
-    )
-    if most_common_accent == "Other":
-        summary += "The speaker's accent is less likely to be a native English accent."
-    
-    return {
-        "accent": most_common_accent,
-        "english_confidence": avg_english_confidence,
-        "summary": summary,
-        "raw_language_codes": language_codes
-    }
-
-@app.get("/", response_class=HTMLResponse)
-async def get_form(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
-
-@app.post("/analyze")
-async def analyze_video(video_url: str = Form(...)):
     try:
-        logger.info(f"Analyzing video: {video_url}")
-        audio_path = download_and_extract_audio(video_url)
-        result = analyze_accent(audio_path)
-        return result
+        logger.info("Starting accent analysis...")
+        # Check language
+        is_english, lang_confidence = detect_language(audio_path)
+        if not is_english:
+            raise ValueError(f"Non-English speech detected (confidence: {lang_confidence:.2f}%). Please provide a video with English speech.")
+
+        model = load_accent_model()
+        
+        audio_chunks = split_audio(audio_path)
+        if not audio_chunks:
+            raise ValueError("No valid speech chunks detected.")
+        
+        predictions = []
+        
+        for chunk_path in audio_chunks:
+            logger.info(f"Processing chunk: {chunk_path}")
+            try:
+                out_prob, score, index, text_lab = model.classify_file(chunk_path)
+                predicted_class = text_lab[0].lower()  # e.g., 'england', 'us'
+                confidence = float(score) * 100
+                
+                # Map model labels to desired accents
+                accent_map = {
+                    "england": "British",
+                    "scotland": "British",
+                    "wales": "British",
+                    "us": "American",
+                    "australia": "Australian",
+                    "canada": "Canadian",
+                    "ireland": "Irish",
+                    "newzealand": "New Zealander",
+                    "bermuda": "Bermudian",
+                    "hongkong": "Hong Kong",
+                    "indian": "Indian",
+                    "malaysia": "Malaysian",
+                    "philippines": "Philippine",
+                    "singapore": "Singaporean",
+                    "southatlandtic": "South Atlantic",
+                    "african": "African"
+                }
+                mapped_accent = accent_map.get(predicted_class, "Other")
+                
+                is_english_accent = mapped_accent in ["British", "American", "Australian", "Canadian", "Irish", "New Zealander"]
+                english_confidence = confidence if is_english_accent else (100 - confidence)
+                
+                predictions.append({
+                    "accent": mapped_accent,
+                    "english_confidence": english_confidence,
+                    "confidence": confidence,
+                    "language_code": predicted_class
+                })
+            except Exception as e:
+                logger.error(f"Error processing chunk {chunk_path}: {str(e)}")
+                continue
+        
+        if not predictions:
+            raise ValueError("No valid predictions from audio chunks.")
+        
+        accents = [p["accent"] for p in predictions]
+        most_common_accent = max(set(accents), key=accents.count)
+        
+        english_confidences = [p["english_confidence"] for p in predictions if p["accent"] != "Other"]
+        avg_english_confidence = np.mean(english_confidences) if english_confidences else 0.0
+        avg_confidence = np.mean([p["confidence"] for p in predictions])
+        language_codes = [p["language_code"] for p in predictions]
+        
+        logger.info(f"Predicted language codes: {language_codes}")
+        
+        summary = (
+            f"The detected accent is {most_common_accent} with a confidence of {avg_confidence:.2f}%. "
+            f"The likelihood of an English-native accent (British, American, Australian, Canadian, Irish, New Zealander) is {avg_english_confidence:.2f}%. "
+        )
+        if most_common_accent == "Other":
+            summary += "The speaker's accent is less likely to be a native English accent."
+        
+        logger.info(f"Accent analysis complete: {most_common_accent}, {avg_english_confidence:.2f}%")
+        return most_common_accent, avg_english_confidence, summary
     except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        return {"error": str(e)}
+        logger.error(f"Accent analysis failed: {str(e)}")
+        st.error(f"Accent analysis failed: {str(e)}")
+        return None, None, None
+    finally:
+        try:
+            for chunk_path in audio_chunks:
+                if os.path.exists(chunk_path) and chunk_path != audio_path:
+                    os.remove(chunk_path)
+        except Exception as e:
+            logger.warning(f"Chunk cleanup failed: {str(e)}")
+
+# Streamlit UI
+st.title("Video Accent Analysis Agent")
+st.markdown("Upload a public video URL (e.g., YouTube or direct MP4) to analyze the speaker's accent.")
+
+video_url = st.text_input("Enter video URL:")
+if st.button("Analyze"):
+    if video_url:
+        with st.spinner("Downloading video and extracting audio..."):
+            audio_path, temp_dir = download_and_extract_audio(video_url)
+        if audio_path:
+            with st.spinner("Analyzing accent..."):
+                accent, confidence, summary = analyze_accent(audio_path)
+                if accent and confidence is not None:
+                    st.success("Analysis complete!")
+                    st.write(f"**Detected Accent**: {accent}")
+                    st.write(f"**English Accent Confidence**: {confidence:.2f}%")
+                    st.write(f"**Summary**:")
+                    st.markdown(summary)
+                    try:
+                        os.remove(audio_path)
+                        os.remove(os.path.join(temp_dir, "video.mp4"))
+                        os.rmdir(temp_dir)
+                    except Exception as e:
+                        logger.warning(f"Cleanup failed: {str(e)}")
+                else:
+                    st.error("Failed to analyze the accent. Please try another video.")
+    else:
+        st.warning("Please enter a valid video URL.")
