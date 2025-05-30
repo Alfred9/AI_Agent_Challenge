@@ -1,5 +1,5 @@
 import streamlit as st
-import pytube
+import yt_dlp
 import moviepy.editor as mp
 import os
 import tempfile
@@ -14,9 +14,19 @@ def download_and_extract_audio(video_url):
     try:
         # Create temporary directory
         temp_dir = tempfile.mkdtemp()
-        yt = pytube.YouTube(video_url)
-        video = yt.streams.filter(progressive=True, file_extension='mp4').first()
-        video_path = video.download(output_path=temp_dir)
+        
+        # Configure yt-dlp options
+        ydl_opts = {
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
+            'outtmpl': os.path.join(temp_dir, 'video.%(ext)s'),
+            'quiet': True,
+        }
+        
+        # Download video
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=True)
+            video_path = ydl.prepare_filename(info)
+            st.write(f"Downloaded video: {info['title']}")
         
         # Extract audio
         video_clip = mp.VideoFileClip(video_path)
@@ -103,6 +113,7 @@ if st.button("Analyze"):
                     # Clean up temporary files
                     try:
                         os.remove(audio_path)
+                        os.remove(video_path)
                         os.rmdir(temp_dir)
                     except:
                         pass
