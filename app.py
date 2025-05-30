@@ -75,7 +75,7 @@ def download_and_extract_audio(video_url):
         except Exception as e:
             logger.error(f"MoviePy failed: {str(e)}")
             if 'video_fps' in str(e):
-                video_clip = mp.VideoFileClip(video_path, fps_source='mp4')
+                video_clip = mp.VideoFileClip(video_path, fps_source='fps=30')
             else:
                 raise
         
@@ -94,11 +94,11 @@ def download_and_extract_audio(video_url):
 # Function to split audio into chunks
 def split_audio(audio_path, chunk_length_ms=30000):
     try:
-        audio_chunk = AudioSegment.from_wav(audio_path)
+        audio = AudioSegment.from_wav(audio_path)
         chunks = []
         temp_dir = os.path.dirname(audio_path)
-        for i in range(0, len(audio_chunk), chunk_length_ms):
-            chunk = audio_chunk[i:i + chunk_length_ms]
+        for i in range(0, len(audio), chunk_length_ms):
+            chunk = audio[i:i + chunk_length_ms]
             chunk_path = os.path.join(temp_dir, f"chunk_{i//1000}.wav")
             chunk.export(chunk_path, format="wav")
             chunks.append(chunk_path)
@@ -121,31 +121,38 @@ def analyze_accent(audio_path):
             logger.info(f"Processing chunk: {chunk_path}")
             try:
                 out_prob, score, index, text_lab = model.classify_file(chunk_path)
-                predicted_class = text_lab[0].lower()  # e.g., 'england', 'us'
+                predicted_accent = text_lab[0].lower()  # e.g., 'england', 'us'
                 confidence = float(score) * 100
                 
                 # Map model labels to desired accents
                 accent_map = {
-                    "uk": "British",
                     "england": "British",
+                    "scotland": "British",
+                    "wales": "British",
                     "us": "American",
                     "australia": "Australian",
+                    "canada": "Canadian",
                     "ireland": "Irish",
+                    "newzealand": "New Zealander",
+                    "bermuda": "Bermudian",
+                    "hongkong": "Hong Kong",
+                    "indian": "Indian",
                     "malaysia": "Malaysian",
-                    "india": "Indian",
-                    "spain": "Spanish",
-                    "france": "French"
+                    "philippines": "Philippine",
+                    "singapore": "Singaporean",
+                    "southatlandtic": "South Atlantic",
+                    "african": "African"
                 }
-                mapped_accent = accent_map.get(predicted_class, "Other")
+                mapped_accent = accent_map.get(predicted_accent, "Other")
                 
-                is_english_accent = mapped_accent in ["British", "American", "Australian", "Irish"]
+                is_english_accent = mapped_accent in ["British", "American", "Australian", "Canadian", "Irish", "New Zealander"]
                 english_confidence = confidence if is_english_accent else (100 - confidence)
                 
                 predictions.append({
                     "accent": mapped_accent,
                     "english_confidence": english_confidence,
                     "confidence": confidence,
-                    "language_code": predicted_class
+                    "language_code": predicted_accent
                 })
             except Exception as e:
                 logger.error(f"Error processing chunk {chunk_path}: {str(e)}")
@@ -157,7 +164,7 @@ def analyze_accent(audio_path):
         accents = [p["accent"] for p in predictions]
         most_common_accent = max(set(accents), key=accents.count)
         
-        english_confidences = [p["english_confidence"] for p in predictions if p["accent"] != "Other"]
+        english_confidences = [p["english_confidence"] for p in predictions if p["accent"] in ["British", "American", "Australian", "Canadian", "Irish", "New Zealander"]]
         avg_english_confidence = np.mean(english_confidences) if english_confidences else 0.0
         avg_confidence = np.mean([p["confidence"] for p in predictions])
         language_codes = [p["language_code"] for p in predictions]
@@ -167,10 +174,10 @@ def analyze_accent(audio_path):
         
         summary = (
             f"The detected accent is {most_common_accent} with a confidence of {avg_confidence:.2f}%. "
-            f"The likelihood of an English-native accent (British, American, Australian, Irish) is {avg_english_confidence:.2f}%. "
+            f"The likelihood of an English-native accent (British, American, Australian, Canadian, Irish, New Zealander) is {avg_english_confidence:.2f}%. "
         )
-        if most_common_accent == "Other":
-            summary += "The speaker's accent is less likely to be a native English accent."
+        if most_common_accent not in ["British", "American", "Australian", "Canadian", "Irish", "New Zealander"]:
+            summary += f"The speaker's accent is classified as {most_common_accent}, which is not a native English accent."
         
         logger.info(f"Accent analysis complete: {most_common_accent}, {avg_english_confidence:.2f}%")
         return most_common_accent, avg_english_confidence, summary
@@ -187,7 +194,7 @@ def analyze_accent(audio_path):
             logger.warning(f"Chunk cleanup failed: {str(e)}")
 
 # Streamlit UI
-st.title("Video Accent Analysis Agent")
+st.title("Video Accent Analysis Tool")
 st.markdown("Upload a public video URL (e.g., YouTube or direct MP4) to analyze the speaker's accent.")
 
 video_url = st.text_input("Enter video URL:")
@@ -201,7 +208,7 @@ if st.button("Analyze"):
                 if accent and confidence is not None:
                     st.success("Analysis complete!")
                     st.write(f"**Detected Accent**: {accent}")
-                    st.write(f"**English Accent Confidence**: {confidence:.2f}%")
+                    st.write(f"**English Confidence**: {confidence:.2f}%")
                     st.write(f"**Summary**:")
                     st.markdown(summary)
                     try:
@@ -214,3 +221,12 @@ if st.button("Analyze"):
                     st.error("Failed to analyze the accent. Please try another video.")
     else:
         st.warning("Please enter a valid video URL.")
+</script>
+</xai_viewer>
+```
+
+##### packages.txt
+<xaiArtifact artifact_id="814b1382-06ae-4a9f-a94e-08dfab919ce7" artifact_version_id="916b5061-5e2f-4245-971c-1d8079d7aa28" title="packages.txt" contentType="text/plain">
+pkg-config
+cmake
+ffmpeg
