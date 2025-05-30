@@ -4,7 +4,7 @@ import moviepy.editor as mp
 import os
 import tempfile
 import speechbrain as sb
-from speechbrain.pretrained import EncoderClassifier, LangID
+from speechbrain.pretrained import EncoderClassifier
 import torch
 import torchaudio
 import librosa
@@ -43,7 +43,7 @@ def load_accent_model():
 def load_lang_model():
     logger.info("Loading language model...")
     try:
-        model = LangID.from_hparams(
+        model = EncoderClassifier.from_hparams(
             source="speechbrain/lang-id-voxlingua107-ecapa",
             savedir="pretrained_models/lang-id-voxlingua107-ecapa"
         )
@@ -145,6 +145,7 @@ def detect_language(audio_path):
         return language.startswith('en'), confidence
     except Exception as e:
         logger.error(f"Language detection failed: {str(e)}")
+        st.error(f"Language detection failed: {str(e)}")
         return False, 0.0
 
 # Function to analyze accent
