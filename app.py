@@ -30,8 +30,8 @@ def load_accent_model():
     logger.info("Loading accent model...")
     try:
         model = EncoderClassifier.from_hparams(
-            source="speechbrain/lang-id-voxlingua107-ecapa",
-            savedir="pretrained_models/lang-id-voxlingua107-ecapa"
+            source="Jzuluaga/accent-id-commonaccent_ecapa",
+            savedir="pretrained_models/accent-id-commonaccent_ecapa"
         )
         logger.info("Model loaded successfully.")
         return model
@@ -44,9 +44,7 @@ def probe_video(video_path):
     try:
         probe = ffmpeg.probe(video_path)
         video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-        if video_stream and 'r_frame_rate' in video_stream:
-            return video_stream['r_frame_rate']
-        return None
+        return video_stream['r_frame_rate'] if video_stream and 'r_frame_rate' in video_stream else None
     except ffmpeg.Error as e:
         logger.error(f"FFmpeg probe failed: {str(e)}")
         return None
@@ -57,7 +55,7 @@ def download_and_extract_audio(video_url):
         logger.info(f"Downloading video: {video_url}")
         temp_dir = tempfile.mkdtemp()
         ydl_opts = {
-            'format': 'best[ext=mp4]',  # Use reliable MP4 format
+            'format': 'best[ext=mp4]',
             'outtmpl': os.path.join(temp_dir, 'video.%(ext)s'),
             'quiet': True,
             'max_duration': 240,  # 4 minutes
@@ -77,8 +75,7 @@ def download_and_extract_audio(video_url):
         except Exception as e:
             logger.error(f"MoviePy failed: {str(e)}")
             if 'video_fps' in str(e):
-                logger.info("Attempting fallback with default FPS...")
-                video_clip = mp.VideoFileClip(video_path, fps_source='fps=30')  # Default FPS
+                video_clip = mp.VideoFileClip(video_path, fps_source='fps=30')
             else:
                 raise
         
@@ -95,7 +92,7 @@ def download_and_extract_audio(video_url):
         return None, None
 
 # Function to split audio into chunks
-def split_audio(audio_path, chunk_length_ms=30000):  # 30 seconds
+def split_audio(audio_path, chunk_length_ms=30000):
     try:
         audio = AudioSegment.from_wav(audio_path)
         chunks = []
@@ -122,33 +119,31 @@ def analyze_accent(audio_path):
         
         for chunk_path in audio_chunks:
             logger.info(f"Processing chunk: {chunk_path}")
-            signal, fs = librosa.load(chunk_path, sr=16000)
-            signal_tensor = torch.tensor(signal).float()
-            output = model.classify_batch(signal_tensor.unsqueeze(0))
-            probabilities = output[0].exp().cpu().numpy()
-            predicted_class = output[3][0]
+            out_prob, score, index, text_lab = model.classify_file(chunk_path)
+            predicted_accent = text_lab[0]  # e.g., 'UK', 'Ireland'
+            confidence = float(score) * 100  # Convert score to percentage
             
+            # Map model labels to desired accents
             accent_map = {
-                "en-US": "American",
-                "en-GB": "British",
-                "en-AU": "Australian",
-                "hi-IN": "Indian",
-                "es-ES": "Spanish",
-                "fr-FR": "French",
-                "en": "British"
+                "UK": "British",
+                "US": "American",
+                "Australia": "Australian",
+                "Ireland": "Irish",
+                "Malaysia": "Malaysian",
+                "India": "Indian",
+                "Spain": "Spanish",
+                "France": "French"
             }
-            default_accent = "Other"
-            predicted_accent = accent_map.get(predicted_class, default_accent)
-            confidence = float(probabilities[0][model.hparams.label_encoder.encode_label(predicted_class)] * 100)
+            mapped_accent = accent_map.get(predicted_accent, "Other")
             
-            is_english_accent = predicted_class in ["en-US", "en-GB", "en-AU", "en"]
+            is_english_accent = mapped_accent in ["British", "American", "Australian", "Irish"]
             english_confidence = confidence if is_english_accent else (100 - confidence)
             
             predictions.append({
-                "accent": predicted_accent,
+                "accent": mapped_accent,
                 "english_confidence": english_confidence,
                 "confidence": confidence,
-                "language_code": predicted_class
+                "language_code": predicted_accent
             })
         
         if not predictions:
@@ -156,7 +151,10 @@ def analyze_accent(audio_path):
         
         accents = [p["accent"] for p in predictions]
         most_common_accent = max(set(accents), key=accents.count)
-        avg_english_confidence = np.mean([p["english_confidence"] for p in predictions if p["accent"] != "Other"])
+        
+        # Fix NaN by checking for English predictions
+        english_confidences = [p["english_confidence"] for p in predictions if p["accent"] != "Other"]
+        avg_english_confidence = np.mean(english_confidences) if english_confidences else 0.0
         avg_confidence = np.mean([p["confidence"] for p in predictions])
         language_codes = [p["language_code"] for p in predictions]
         
@@ -165,7 +163,7 @@ def analyze_accent(audio_path):
         
         summary = (
             f"The detected accent is {most_common_accent} with a confidence of {avg_confidence:.2f}%. "
-            f"The likelihood of an English-native accent (American, British, or Australian) is {avg_english_confidence:.2f}%. "
+            f"The likelihood of an English-native accent (British, American, Australian, Irish) is {avg_english_confidence:.2f}%. "
         )
         if most_common_accent == "Other":
             summary += "The speaker's accent is less likely to be a native English accent."
