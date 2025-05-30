@@ -1,6 +1,6 @@
 streamlit==1.25.0
 yt-dlp>=2024.10.22
-moviepy==1.0.3
+moviepy>=1.0.3
 speechbrain==0.5.15
 librosa==0.10.1
 torch==2.3.0
