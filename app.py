@@ -145,7 +145,7 @@ def analyze_accent(audio_path):
                 }
                 mapped_accent = accent_map.get(predicted_accent, "Other")
                 
-                is_english_accent = mapped_accent in ["British", "American", "Australian", "Canadian", "Irish", "New Zealander"]
+                is_english_accent = mapped_accent in ["British", "American", "Australian", "Irish"]
                 english_confidence = confidence if is_english_accent else (100 - confidence)
                 
                 predictions.append({
