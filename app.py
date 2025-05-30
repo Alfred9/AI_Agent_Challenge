@@ -17,7 +17,7 @@ def download_and_extract_audio(video_url):
         
         # Configure yt-dlp options
         ydl_opts = {
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
+            'format': 'best[ext=mp4]',  # Prioritize single MP4 stream with audio
             'outtmpl': os.path.join(temp_dir, 'video.%(ext)s'),
             'quiet': True,
         }
@@ -28,8 +28,14 @@ def download_and_extract_audio(video_url):
             video_path = ydl.prepare_filename(info)
             st.write(f"Downloaded video: {info['title']}")
         
-        # Extract audio
+        # Load video with moviepy
         video_clip = mp.VideoFileClip(video_path)
+        
+        # Check if audio track exists
+        if video_clip.audio is None:
+            raise ValueError("The downloaded video has no audio track.")
+        
+        # Extract audio
         audio_path = os.path.join(temp_dir, "audio.wav")
         video_clip.audio.write_audiofile(audio_path)
         video_clip.close()
