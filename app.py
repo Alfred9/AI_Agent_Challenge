@@ -12,30 +12,19 @@ import numpy as np
 # Function to download video and extract audio
 def download_and_extract_audio(video_url):
     try:
-        # Create temporary directory
         temp_dir = tempfile.mkdtemp()
-        
-        # Configure yt-dlp options
         ydl_opts = {
-            'format': 'best[ext=mp4]',  # Prioritize single MP4 stream with audio
+            'format': 'best[ext=mp4]',
             'outtmpl': os.path.join(temp_dir, 'video.%(ext)s'),
             'quiet': True,
         }
-        
-        # Download video
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
             video_path = ydl.prepare_filename(info)
             st.write(f"Downloaded video: {info['title']}")
-        
-        # Load video with moviepy
         video_clip = mp.VideoFileClip(video_path)
-        
-        # Check if audio track exists
         if video_clip.audio is None:
             raise ValueError("The downloaded video has no audio track.")
-        
-        # Extract audio
         audio_path = os.path.join(temp_dir, "audio.wav")
         video_clip.audio.write_audiofile(audio_path)
         video_clip.close()
@@ -47,40 +36,34 @@ def download_and_extract_audio(video_url):
 # Function to analyze accent
 def analyze_accent(audio_path):
     try:
-        # Load pre-trained accent classification model
+        # Load language identification model as a proxy for accent
         model = EncoderClassifier.from_hparams(
-            source="speechbrain/accent-classifier-ecapa",
-            savedir="pretrained_models/accent-classifier-ecapa"
+            source="speechbrain/lang-id-voxlingua107-ecapa",
+            savedir="pretrained_models/lang-id-voxlingua107-ecapa"
         )
         
-        # Load audio
         signal, fs = librosa.load(audio_path, sr=16000)
-        
-        # Convert to tensor
         signal_tensor = torch.tensor(signal).float()
-        
-        # Analyze accent
         output = model.classify_batch(signal_tensor.unsqueeze(0))
-        probabilities = output[0].exp().cpu().numpy()  # Get probabilities
-        predicted_class = output[3].item()  # Get predicted class index
-        labels = model.hparams.label_encoder._lb.classes_  # Get class labels
+        probabilities = output[0].exp().cpu().numpy()
+        predicted_class = output[3][0]  # Get predicted class label (language code)
         
-        # Map labels to readable accent names
+        # Map language codes to accents
         accent_map = {
-            0: "American",
-            1: "British",
-            2: "Australian",
-            3: "Indian",
-            4: "Other"
+            "en-US": "American",
+            "en-GB": "British",
+            "en-AU": "Australian",
+            "hi-IN": "Indian",
+            "es-ES": "Spanish",
+            "fr-FR": "French",
         }
-        predicted_accent = accent_map.get(predicted_class, "Unknown")
-        confidence = float(probabilities[0][predicted_class] * 100)
+        default_accent = "Other"
+        predicted_accent = accent_map.get(predicted_class, default_accent)
+        confidence = float(probabilities[0][model.hparams.label_encoder.encode_label(predicted_class)] * 100)
         
-        # Check if English accent (non-Indian, non-Other)
-        is_english_accent = predicted_class in [0, 1, 2]
+        is_english_accent = predicted_class in ["en-US", "en-GB", "en-AU"]
         english_confidence = confidence if is_english_accent else (100 - confidence)
         
-        # Generate summary
         summary = (
             f"The detected accent is {predicted_accent} with a confidence of {confidence:.2f}%. "
             f"The likelihood of an English-native accent (American, British, or Australian) is {english_confidence:.2f}%. "
@@ -97,29 +80,23 @@ def analyze_accent(audio_path):
 st.title("Video Accent Analysis Tool")
 st.markdown("Upload a public video URL (e.g., YouTube or direct MP4) to analyze the speaker's accent.")
 
-# Input field for video URL
 video_url = st.text_input("Enter video URL:")
-
 if st.button("Analyze"):
     if video_url:
         with st.spinner("Downloading video and extracting audio..."):
             audio_path, temp_dir = download_and_extract_audio(video_url)
-        
         if audio_path:
             with st.spinner("Analyzing accent..."):
                 accent, confidence, summary = analyze_accent(audio_path)
-                
                 if accent and confidence:
                     st.success("Analysis complete!")
                     st.write(f"**Detected Accent**: {accent}")
                     st.write(f"**English Accent Confidence**: {confidence:.2f}%")
-                    st.write("**Summary**:")
+                    st.write(f"**Summary**:")
                     st.markdown(summary)
-                    
-                    # Clean up temporary files
                     try:
                         os.remove(audio_path)
-                        os.remove(video_path)
+                        os.remove(os.path.join(temp_dir, "video.mp4"))
                         os.rmdir(temp_dir)
                     except:
                         pass
