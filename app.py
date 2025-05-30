@@ -11,6 +11,7 @@ import librosa
 import numpy as np
 import logging
 from pydub import AudioSegment
+import ffmpeg
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -38,13 +39,25 @@ def load_accent_model():
         logger.error(f"Failed to load model: {str(e)}")
         raise
 
+# Function to probe video metadata
+def probe_video(video_path):
+    try:
+        probe = ffmpeg.probe(video_path)
+        video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
+        if video_stream and 'r_frame_rate' in video_stream:
+            return video_stream['r_frame_rate']
+        return None
+    except ffmpeg.Error as e:
+        logger.error(f"FFmpeg probe failed: {str(e)}")
+        return None
+
 # Function to download video and extract audio
 def download_and_extract_audio(video_url):
     try:
         logger.info(f"Downloading video: {video_url}")
         temp_dir = tempfile.mkdtemp()
         ydl_opts = {
-            'format': 'bestaudio/best[ext=mp4]',
+            'format': 'best[ext=mp4]',  # Use reliable MP4 format
             'outtmpl': os.path.join(temp_dir, 'video.%(ext)s'),
             'quiet': True,
             'max_duration': 240,  # 4 minutes
@@ -53,8 +66,22 @@ def download_and_extract_audio(video_url):
             info = ydl.extract_info(video_url, download=True)
             video_path = ydl.prepare_filename(info)
             st.write(f"Downloaded video: {info['title']}")
+        
+        logger.info("Probing video metadata...")
+        fps = probe_video(video_path)
+        logger.info(f"Video FPS: {fps}")
+        
         logger.info("Extracting audio...")
-        video_clip = mp.VideoFileClip(video_path)
+        try:
+            video_clip = mp.VideoFileClip(video_path)
+        except Exception as e:
+            logger.error(f"MoviePy failed: {str(e)}")
+            if 'video_fps' in str(e):
+                logger.info("Attempting fallback with default FPS...")
+                video_clip = mp.VideoFileClip(video_path, fps_source='fps=30')  # Default FPS
+            else:
+                raise
+        
         if video_clip.audio is None:
             raise ValueError("No audio track.")
         audio_path = os.path.join(temp_dir, "audio.wav")
@@ -82,7 +109,7 @@ def split_audio(audio_path, chunk_length_ms=30000):  # 30 seconds
         return chunks
     except Exception as e:
         logger.error(f"Error splitting audio: {str(e)}")
-        return [audio_path]  # Fallback to original audio
+        return [audio_path]
 
 # Function to analyze accent
 def analyze_accent(audio_path):
@@ -90,7 +117,6 @@ def analyze_accent(audio_path):
         logger.info("Analyzing accent...")
         model = load_accent_model()
         
-        # Split audio into chunks
         audio_chunks = split_audio(audio_path)
         predictions = []
         
@@ -125,7 +151,6 @@ def analyze_accent(audio_path):
                 "language_code": predicted_class
             })
         
-        # Aggregate predictions (majority vote for accent, average confidence)
         if not predictions:
             raise ValueError("No valid predictions from audio chunks.")
         
@@ -152,7 +177,6 @@ def analyze_accent(audio_path):
         st.error(f"Error analyzing accent: {str(e)}")
         return None, None, None
     finally:
-        # Clean up chunks
         for chunk_path in audio_chunks:
             try:
                 if os.path.exists(chunk_path) and chunk_path != audio_path:
