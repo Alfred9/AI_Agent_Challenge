@@ -126,15 +126,22 @@ def analyze_accent(audio_path):
                 
                 # Map model labels to desired accents
                 accent_map = {
-                    "uk": "British",
                     "england": "British",
+                    "scotland": "British",
+                    "wales": "British",
                     "us": "American",
                     "australia": "Australian",
+                    "canada": "Canadian",
                     "ireland": "Irish",
+                    "newzealand": "New Zealander",
+                    "bermuda": "Bermudian",
+                    "hongkong": "Hong Kong",
+                    "indian": "Indian",
                     "malaysia": "Malaysian",
-                    "india": "Indian",
-                    "spain": "Spanish",
-                    "france": "French"
+                    "philippines": "Philippine",
+                    "singapore": "Singaporean",
+                    "southatlandtic": "South Atlantic",
+                    "african": "African"
                 }
                 mapped_accent = accent_map.get(predicted_class, "Other")
                 
