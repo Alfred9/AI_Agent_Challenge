@@ -4,6 +4,6 @@ moviepy==1.0.3
 speechbrain==0.5.15
 librosa==0.10.1
 torch==2.7.0
-numpy==1.24.3
+numpy>=1.25.0
 sentencepiece>=0.2.0
 setuptools>=68.0.0
