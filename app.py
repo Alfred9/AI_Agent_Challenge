@@ -194,7 +194,7 @@ def analyze_accent(audio_path):
             logger.warning(f"Chunk cleanup failed: {str(e)}")
 
 # Streamlit UI
-st.title("Video Accent Analysis Tool")
+st.title("Video Accent Analysis Agent")
 st.markdown("Upload a public video URL (e.g., YouTube or direct MP4) to analyze the speaker's accent.")
 
 video_url = st.text_input("Enter video URL:")
