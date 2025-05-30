@@ -6,6 +6,7 @@ import tempfile
 import speechbrain as sb
 from speechbrain.pretrained import EncoderClassifier
 import torch
+import torchaudio
 import librosa
 import numpy as np
 import logging
@@ -14,7 +15,10 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Cache model to reduce memory usage
+# Set torchaudio backend
+torchaudio.set_audio_backend("soundfile")
+
+# Cache model
 @st.cache_resource
 def load_accent_model():
     logger.info("Loading accent model...")
@@ -65,6 +69,7 @@ def analyze_accent(audio_path):
         model = load_accent_model()
         signal, fs = librosa.load(audio_path, sr=16000)
         signal_tensor = torch.tensor(signal).float()
+        logger.info("Running model inference...")
         output = model.classify_batch(signal_tensor.unsqueeze(0))
         probabilities = output[0].exp().cpu().numpy()
         predicted_class = output[3][0]
