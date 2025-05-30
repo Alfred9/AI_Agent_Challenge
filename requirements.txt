@@ -1,0 +1,7 @@
+streamlit==1.25.0
+pytube==15.0.0
+moviepy==1.0.3
+speechbrain==0.5.15
+librosa==0.10.1
+torch==2.0.1
+numpy==1.24.3
