@@ -75,7 +75,7 @@ def download_and_extract_audio(video_url):
         except Exception as e:
             logger.error(f"MoviePy failed: {str(e)}")
             if 'video_fps' in str(e):
-                video_clip = mp.VideoFileClip(video_path, fps_source='fps=30')
+                video_clip = mp.VideoFileClip(video_path, fps_source='mp4')
             else:
                 raise
         
@@ -94,11 +94,11 @@ def download_and_extract_audio(video_url):
 # Function to split audio into chunks
 def split_audio(audio_path, chunk_length_ms=30000):
     try:
-        audio = AudioSegment.from_wav(audio_path)
+        audio_chunk = AudioSegment.from_wav(audio_path)
         chunks = []
         temp_dir = os.path.dirname(audio_path)
-        for i in range(0, len(audio), chunk_length_ms):
-            chunk = audio[i:i + chunk_length_ms]
+        for i in range(0, len(audio_chunk), chunk_length_ms):
+            chunk = audio_chunk[i:i + chunk_length_ms]
             chunk_path = os.path.join(temp_dir, f"chunk_{i//1000}.wav")
             chunk.export(chunk_path, format="wav")
             chunks.append(chunk_path)
@@ -111,7 +111,7 @@ def split_audio(audio_path, chunk_length_ms=30000):
 # Function to analyze accent
 def analyze_accent(audio_path):
     try:
-        logger.info("Analyzing accent...")
+        logger.info("Starting accent analysis...")
         model = load_accent_model()
         
         audio_chunks = split_audio(audio_path)
@@ -119,32 +119,37 @@ def analyze_accent(audio_path):
         
         for chunk_path in audio_chunks:
             logger.info(f"Processing chunk: {chunk_path}")
-            out_prob, score, index, text_lab = model.classify_file(chunk_path)
-            predicted_accent = text_lab[0]  # e.g., 'UK', 'Ireland'
-            confidence = float(score) * 100  # Convert score to percentage
-            
-            # Map model labels to desired accents
-            accent_map = {
-                "UK": "British",
-                "US": "American",
-                "Australia": "Australian",
-                "Ireland": "Irish",
-                "Malaysia": "Malaysian",
-                "India": "Indian",
-                "Spain": "Spanish",
-                "France": "French"
-            }
-            mapped_accent = accent_map.get(predicted_accent, "Other")
-            
-            is_english_accent = mapped_accent in ["British", "American", "Australian", "Irish"]
-            english_confidence = confidence if is_english_accent else (100 - confidence)
-            
-            predictions.append({
-                "accent": mapped_accent,
-                "english_confidence": english_confidence,
-                "confidence": confidence,
-                "language_code": predicted_accent
-            })
+            try:
+                out_prob, score, index, text_lab = model.classify_file(chunk_path)
+                predicted_class = text_lab[0].lower()  # e.g., 'england', 'us'
+                confidence = float(score) * 100
+                
+                # Map model labels to desired accents
+                accent_map = {
+                    "uk": "British",
+                    "england": "British",
+                    "us": "American",
+                    "australia": "Australian",
+                    "ireland": "Irish",
+                    "malaysia": "Malaysian",
+                    "india": "Indian",
+                    "spain": "Spanish",
+                    "france": "French"
+                }
+                mapped_accent = accent_map.get(predicted_class, "Other")
+                
+                is_english_accent = mapped_accent in ["British", "American", "Australian", "Irish"]
+                english_confidence = confidence if is_english_accent else (100 - confidence)
+                
+                predictions.append({
+                    "accent": mapped_accent,
+                    "english_confidence": english_confidence,
+                    "confidence": confidence,
+                    "language_code": predicted_class
+                })
+            except Exception as e:
+                logger.error(f"Error processing chunk {chunk_path}: {str(e)}")
+                continue
         
         if not predictions:
             raise ValueError("No valid predictions from audio chunks.")
@@ -152,7 +157,6 @@ def analyze_accent(audio_path):
         accents = [p["accent"] for p in predictions]
         most_common_accent = max(set(accents), key=accents.count)
         
-        # Fix NaN by checking for English predictions
         english_confidences = [p["english_confidence"] for p in predictions if p["accent"] != "Other"]
         avg_english_confidence = np.mean(english_confidences) if english_confidences else 0.0
         avg_confidence = np.mean([p["confidence"] for p in predictions])
@@ -171,16 +175,16 @@ def analyze_accent(audio_path):
         logger.info(f"Accent analysis complete: {most_common_accent}, {avg_english_confidence:.2f}%")
         return most_common_accent, avg_english_confidence, summary
     except Exception as e:
-        logger.error(f"Error analyzing accent: {str(e)}")
-        st.error(f"Error analyzing accent: {str(e)}")
+        logger.error(f"Accent analysis failed: {str(e)}")
+        st.error(f"Accent analysis failed: {str(e)}")
         return None, None, None
     finally:
-        for chunk_path in audio_chunks:
-            try:
+        try:
+            for chunk_path in audio_chunks:
                 if os.path.exists(chunk_path) and chunk_path != audio_path:
                     os.remove(chunk_path)
-            except:
-                pass
+        except Exception as e:
+            logger.warning(f"Chunk cleanup failed: {str(e)}")
 
 # Streamlit UI
 st.title("Video Accent Analysis Agent")
@@ -194,7 +198,7 @@ if st.button("Analyze"):
         if audio_path:
             with st.spinner("Analyzing accent..."):
                 accent, confidence, summary = analyze_accent(audio_path)
-                if accent and confidence:
+                if accent and confidence is not None:
                     st.success("Analysis complete!")
                     st.write(f"**Detected Accent**: {accent}")
                     st.write(f"**English Accent Confidence**: {confidence:.2f}%")
