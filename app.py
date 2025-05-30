@@ -63,7 +63,6 @@ def download_and_extract_audio(video_url):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=True)
             video_path = ydl.prepare_filename(info)
-            st.write(f"Downloaded video: {info['title']}")
         
         logger.info("Probing video metadata...")
         fps = probe_video(video_path)
@@ -169,7 +168,6 @@ def analyze_accent(audio_path):
         avg_confidence = np.mean([p["confidence"] for p in predictions])
         language_codes = [p["language_code"] for p in predictions]
         
-        st.write(f"Raw model outputs (language codes): {language_codes}")
         logger.info(f"Predicted language codes: {language_codes}")
         
         summary = (
