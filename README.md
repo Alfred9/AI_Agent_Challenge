@@ -2,11 +2,9 @@
 
 A comprehensive AI-powered application that analyzes video content to detect spoken language and classify English accents with confidence scoring.
 
-## 🚀 Live Demo
+##Demo
 
-**[Try the App Here](https://your-streamlit-app-url.streamlit.app/)**
-
-*Replace with your actual Streamlit deployment URL*
+**[Try the App Here](https://video-accent-analyzer.streamlit.app/)**
 
 ## 📋 Overview
 
