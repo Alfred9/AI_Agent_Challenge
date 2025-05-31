@@ -122,7 +122,7 @@ def split_audio(audio_path, chunk_length_ms=30000):
         return [audio_path]
 
 # Fixed language detection function
-def detect_language(audio_path):
+def detect_language_with_softmax(audio_path):
     try:
         logger.info("Starting language detection...")
         lang_model = load_language_model()
@@ -136,15 +136,15 @@ def detect_language(audio_path):
                 out_prob, score, index, text_lab = lang_model.classify_file(chunk_path)
                 detected_language = text_lab[0].lower()
                 
-                # Fix: Convert log probability to regular probability
-                if hasattr(out_prob, 'numpy'):
-                    prob_array = out_prob.numpy()
+                # Use softmax to convert logits to probabilities
+                import torch.nn.functional as F
+                if torch.is_tensor(out_prob):
+                    probs = F.softmax(out_prob, dim=-1)
+                    confidence = float(probs[0][index[0]]) * 100
                 else:
-                    prob_array = out_prob
+                    # Fallback if not a tensor
+                    confidence = float(score) * 100 if float(score) > 0 else abs(float(score)) * 100
                 
-                # Get the actual probability (not log prob) for the predicted class
-                confidence = float(prob_array[index[0]]) * 100
-                                
                 language_predictions.append({
                     "language": detected_language,
                     "confidence": confidence
@@ -153,22 +153,21 @@ def detect_language(audio_path):
                 logger.error(f"Error processing language chunk {chunk_path}: {str(e)}")
                 continue
         
+        # Rest of the function remains the same...
         if not language_predictions:
             raise ValueError("No valid language predictions from audio chunks.")
         
-        # Get most common language
         languages = [p["language"] for p in language_predictions]
         most_common_language = max(set(languages), key=languages.count)
         avg_confidence = np.mean([p["confidence"] for p in language_predictions])
         
-        # Check if English is detected with reasonable confidence
         english_chunks = [p for p in language_predictions if p["language"] == "en"]
         english_ratio = len(english_chunks) / len(language_predictions)
         
         logger.info(f"Language detection complete: {most_common_language}, confidence: {avg_confidence:.2f}%")
         logger.info(f"English ratio: {english_ratio:.2f}")
         
-        # Clean up language detection chunks
+        # Clean up
         try:
             for chunk_path in audio_chunks:
                 if os.path.exists(chunk_path) and chunk_path != audio_path:
