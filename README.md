@@ -2,7 +2,7 @@
 
 A comprehensive AI-powered application that analyzes video content to detect spoken language and classify English accents with confidence scoring.
 
-##Demo
+## Demo
 
 **[Try the App Here](https://video-accent-analyzer.streamlit.app/)**
 
@@ -13,7 +13,7 @@ This application performs intelligent two-stage analysis of video content:
 1. **Language Detection**: Identifies the primary spoken language using SpeechBrain's VoxLingua107 model
 2. **Accent Classification**: For English content, classifies regional accents (British, American, Australian, etc.) with confidence scoring
 
-## 🎯 Features
+## Features
 
 - **Multi-Language Detection**: Supports 107+ languages
 - **English Accent Classification**: Identifies British, American, Australian, Canadian, Irish, New Zealand, and other regional accents
@@ -23,7 +23,7 @@ This application performs intelligent two-stage analysis of video content:
 - **Real-time Processing**: Streamlit interface with progress indicators
 - **Intelligent Chunking**: Processes audio in optimized segments for better accuracy
 
-## 🛠️ Installation & Setup
+## Installation & Setup
 
 ### Prerequisites
 
@@ -64,7 +64,7 @@ This application performs intelligent two-stage analysis of video content:
 
 5. **Open your browser** to `http://localhost:8501`
 
-## 📦 Dependencies
+## Dependencies
 
 ### Core Libraries
 - `streamlit` - Web application framework
@@ -82,7 +82,7 @@ This application performs intelligent two-stage analysis of video content:
 
 *See `requirements.txt` for complete dependency list with versions*
 
-## 🎮 Usage Guide
+## Usage Guide
 
 ### Basic Usage
 
@@ -107,7 +107,7 @@ This application performs intelligent two-stage analysis of video content:
 https://youtube.com/watch?v=EXAMPLE1
 
 # English (British accent)  
-https://youtube.com/watch?v=EXAMPLE2
+https://www.youtube.com/watch?v=As_bK8LipBY&pp=ygUKZ3JhbmQgdG91cg%3D%3D
 
 # Mixed language content
 https://youtube.com/watch?v=EXAMPLE3
