@@ -136,8 +136,8 @@ def detect_language(audio_path):
                 out_prob, score, index, text_lab = lang_model.classify_file(chunk_path)
                 detected_language = text_lab[0].lower()             
                 
-                if ':' in detected_language:
-                detected_language = detected_language.split(':')[0].strip()
+                 if ':' in detected_language:
+                 detected_language = detected_language.split(':')[0].strip()
                 
                 # Use softmax to convert logits to probabilities
                 import torch.nn.functional as F
