@@ -1,12 +1,12 @@
 # Video Language & Accent Analysis Agent
 
-A AI-agent that analyzes video content to detect spoken language and classify English accents with confidence scoring.
+An AI-agent that analyzes video content to detect spoken language and classify English accents with confidence scoring.
 
 ## Demo
 
 **[Try the App Here](https://video-accent-analyzer.streamlit.app/)**
 
-## 📋 Overview
+## Overview
 
 This application performs intelligent two-stage analysis of video content:
 
