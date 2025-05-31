@@ -121,13 +121,13 @@ def split_audio(audio_path, chunk_length_ms=30000):
         logger.error(f"Error splitting audio: {str(e)}")
         return [audio_path]
 
-# Function to detect language
+# Fixed language detection function
 def detect_language(audio_path):
     try:
         logger.info("Starting language detection...")
         lang_model = load_language_model()
         
-        audio_chunks = split_audio(audio_path, chunk_length_ms=15000)  # Shorter chunks for language detection
+        audio_chunks = split_audio(audio_path, chunk_length_ms=15000)
         language_predictions = []
         
         for chunk_path in audio_chunks:
@@ -135,8 +135,16 @@ def detect_language(audio_path):
             try:
                 out_prob, score, index, text_lab = lang_model.classify_file(chunk_path)
                 detected_language = text_lab[0].lower()
-                confidence = float(score) * 100
                 
+                # Fix: Convert log probability to regular probability
+                if hasattr(out_prob, 'numpy'):
+                    prob_array = out_prob.numpy()
+                else:
+                    prob_array = out_prob
+                
+                # Get the actual probability (not log prob) for the predicted class
+                confidence = float(prob_array[index[0]]) * 100
+                                
                 language_predictions.append({
                     "language": detected_language,
                     "confidence": confidence
@@ -174,7 +182,7 @@ def detect_language(audio_path):
         logger.error(f"Language detection failed: {str(e)}")
         return None, None, None, None
 
-# Function to analyze accent (only for English)
+#Accent analysis function
 def analyze_accent(audio_path):
     try:
         logger.info("Starting accent analysis...")
@@ -187,13 +195,19 @@ def analyze_accent(audio_path):
             logger.info(f"Processing chunk: {chunk_path}")
             try:
                 out_prob, score, index, text_lab = model.classify_file(chunk_path)
-                predicted_class = text_lab[0].lower()
-                confidence = float(score) * 100
+                predicted_class = text_lab[0].lower()                
+                # Fix: Get actual probability instead of raw score
+                if hasattr(out_prob, 'numpy'):
+                    prob_array = out_prob.numpy()
+                else:
+                    prob_array = out_prob
+                
+                confidence = float(prob_array[index[0]]) * 100
                 
                 # Map model labels to desired accents
                 accent_map = {
                     "england": "British",
-                    "scotland": "British",
+                    "scotland": "British", 
                     "wales": "British",
                     "us": "American",
                     "australia": "Australian",
@@ -220,11 +234,6 @@ def analyze_accent(audio_path):
                 # Get probability distribution and sum probabilities for English-speaking regions
                 english_accent_probability = 0.0
                 try:
-                    if hasattr(out_prob, 'numpy'):
-                        prob_array = out_prob.numpy()
-                    else:
-                        prob_array = out_prob
-                    
                     # Sum probabilities for all English-speaking regions
                     for i in range(len(text_lab)):
                         if text_lab[i].lower() in english_speaking_regions:
@@ -281,7 +290,7 @@ def analyze_accent(audio_path):
                     os.remove(chunk_path)
         except Exception as e:
             logger.warning(f"Chunk cleanup failed: {str(e)}")
-
+            
 # Main analysis function
 def analyze_video_language_and_accent(audio_path):
     # First, detect language
