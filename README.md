@@ -113,7 +113,7 @@ https://www.youtube.com/watch?v=As_bK8LipBY&pp=ygUKZ3JhbmQgdG91cg%3D%3D
 https://youtube.com/watch?v=EXAMPLE3
 
 # Non-English content
-https://youtube.com/watch?v=EXAMPLE4
+https://www.youtube.com/watch?v=BFIyAtFH-Lo&pp=ygUaZnJlbmNoIG5ld3MgY2xpcCBpbiBmcmVuY2g%3D
 ```
 
 *Replace with actual working video URLs for testing*
