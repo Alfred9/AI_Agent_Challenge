@@ -103,14 +103,8 @@ This application performs intelligent two-stage analysis of video content:
 ### Example URLs for Testing
 
 ```
-# English (American accent)
-https://youtube.com/watch?v=EXAMPLE1
-
 # English (British accent)  
 https://www.youtube.com/watch?v=As_bK8LipBY&pp=ygUKZ3JhbmQgdG91cg%3D%3D
-
-# Mixed language content
-https://youtube.com/watch?v=EXAMPLE3
 
 # Non-English content
 https://www.youtube.com/watch?v=BFIyAtFH-Lo&pp=ygUaZnJlbmNoIG5ld3MgY2xpcCBpbiBmcmVuY2g%3D
@@ -118,24 +112,16 @@ https://www.youtube.com/watch?v=BFIyAtFH-Lo&pp=ygUaZnJlbmNoIG5ld3MgY2xpcCBpbiBmc
 
 *Replace with actual working video URLs for testing*
 
-## 📊 Output Analysis
+## Output Analysis
 
 ### English Content with Accent Detection
 ```
 Language Detected: English (95.2% confidence)
 Detected Accent: American
 English Accent Confidence: 87.3%
-Summary: The detected accent is American with a confidence of 87.3%...
+Summary: The detected accent is American ...
 ```
 
-### Mixed Language Content
-```
-Primary Language: Spanish (78.4% confidence)
-English Content: 35.2% of audio
-English Accent Detected: British
-English Accent Confidence: 72.1%
-Summary: Mixed language detected: Primarily Spanish with 35.2% English content...
-```
 
 ### Non-English Content
 ```
@@ -143,7 +129,7 @@ Language Detected: French (92.7% confidence)
 Summary: Non-English language detected: French with 92.7% confidence...
 ```
 
-## 🔧 Technical Architecture
+## Technical Architecture
 
 ### Processing Pipeline
 
@@ -167,7 +153,7 @@ Summary: Non-English language detected: French with 92.7% confidence...
   - CommonAccent dataset training
   - Regional accent classification
 
-## 🚀 Deployment
+##  Deployment
 
 ### Streamlit Cloud Deployment
 
@@ -175,27 +161,16 @@ This application is deployed on Streamlit Cloud with the following configuration
 
 - **Python Version**: 3.9+
 - **Memory Requirements**: 2GB+ recommended
-- **Processing Time**: 30-120 seconds per video
-- **Concurrent Users**: Supports multiple simultaneous analyses
+- **Processing Time**: 30-60 seconds per video
 
-### Local Development
-
-For local development and testing:
-
-```bash
-# Development mode with debug logging
-export STREAMLIT_LOGGER_LEVEL=debug
-streamlit run app.py --logger.level=debug
-```
-
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
 
 ### Development Setup
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
+2. Create a feature branch
 3. Make your changes with appropriate tests
 4. Submit a pull request with detailed description
 
@@ -203,7 +178,7 @@ Contributions are welcome! Please feel free to submit issues, feature requests, 
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🔍 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -218,9 +193,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Model Loading Issues**:
 - Ensure stable internet connection for initial model download
-- Check available disk space (models require ~2GB)
-
+- 
 **Low Confidence Scores**:
+  
 - Audio quality may be poor
 - Background noise or music interference
 - Very short speech segments
@@ -232,7 +207,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Shorter videos (1-3 minutes) process faster
 - Good internet connection improves model loading time
 
-## 📞 Support
+## Support
 
 For issues, questions, or feature requests, please:
 
@@ -241,6 +216,5 @@ For issues, questions, or feature requests, please:
 3. Create a new issue with detailed description
 4. Include error logs and video URL (if applicable)
 
----
 
-**Built with ❤️ using SpeechBrain, Streamlit, and modern AI technologies**
+**Built with  using SpeechBrain, Streamlit **
