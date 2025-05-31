@@ -192,7 +192,7 @@ def detect_language(audio_path):
         logger.error(f"Language detection failed: {str(e)}")
         return None, None, None, None
 
-# FIXED: Accent analysis function
+# Accent analysis function
 def analyze_accent(audio_path):
     try:
         logger.info("Starting accent analysis...")
@@ -253,13 +253,13 @@ def analyze_accent(audio_path):
                 }
                 mapped_accent = accent_map.get(predicted_class, "Other")
                 
-                # FIXED: Define native English-speaking accents
+                #Define native English-speaking accents
                 native_english_accents = {
                     "British", "American", "Australian", "Canadian", 
                     "Irish", "New Zealand"
                 }
                 
-                # FIXED: Calculate English accent confidence properly
+                # Calculate English accent confidence properly
                 english_accent_confidence = 0.0
                 
                 if prob_array is not None and len(text_lab) == len(prob_array):
@@ -306,7 +306,7 @@ def analyze_accent(audio_path):
         avg_english_confidence = np.mean(english_confidences) if english_confidences else 0.0
         avg_confidence = np.mean([p["confidence"] for p in predictions])
         
-        # FIXED: Ensure logical consistency
+        # Ensure logical consistency
         native_english_accents = {
             "British", "American", "Australian", "Canadian", 
             "Irish", "New Zealand"
