@@ -1,6 +1,6 @@
 # Video Language & Accent Analysis Agent
 
-A comprehensive AI-powered application that analyzes video content to detect spoken language and classify English accents with confidence scoring.
+A AI-agent that analyzes video content to detect spoken language and classify English accents with confidence scoring.
 
 ## Demo
 
