@@ -120,7 +120,7 @@ def analyze_accent(audio_path):
             logger.info(f"Processing chunk: {chunk_path}")
             try:
                 out_prob, score, index, text_lab = model.classify_file(chunk_path)
-                predicted_class = text_lab[0].lower()  # e.g., 'england', 'us'
+                predicted_class = text_lab[0].lower()
                 confidence = float(score) * 100
                 
                 # Map model labels to desired accents
@@ -132,7 +132,7 @@ def analyze_accent(audio_path):
                     "australia": "Australian",
                     "canada": "Canadian",
                     "ireland": "Irish",
-                    "newzealand": "New Zealander",
+                    "newzealand": "New Zealand",
                     "bermuda": "Bermudian",
                     "hongkong": "Hong Kong",
                     "indian": "Indian",
@@ -144,12 +144,36 @@ def analyze_accent(audio_path):
                 }
                 mapped_accent = accent_map.get(predicted_class, "Other")
                 
-                is_english_accent = mapped_accent in ["British", "American", "Australian", "Irish"]
-                english_confidence = confidence if is_english_accent else (100 - confidence)
+                # Calculate English accent confidence using model probabilities
+                english_speaking_regions = [
+                    "england", "scotland", "wales", "us", "australia", 
+                    "canada", "ireland", "newzealand"
+                ]
+                
+                # Get probability distribution and sum probabilities for English-speaking regions
+                english_accent_probability = 0.0
+                try:
+                    if hasattr(out_prob, 'numpy'):
+                        prob_array = out_prob.numpy()
+                    else:
+                        prob_array = out_prob
+                    
+                    # Sum probabilities for all English-speaking regions
+                    for i in range(len(text_lab)):
+                        if text_lab[i].lower() in english_speaking_regions:
+                            english_accent_probability += float(prob_array[i])
+                    
+                    english_accent_probability *= 100  # Convert to percentage
+                    
+                except Exception as prob_error:
+                    logger.warning(f"Could not extract probabilities: {prob_error}")
+                    # Fallback to original logic if probability extraction fails
+                    is_english_accent = mapped_accent in ["British", "American", "Australian", "Canadian", "Irish", "New Zealand"]
+                    english_accent_probability = confidence if is_english_accent else (100 - confidence)
                 
                 predictions.append({
                     "accent": mapped_accent,
-                    "english_confidence": english_confidence,
+                    "english_confidence": english_accent_probability,
                     "confidence": confidence,
                     "language_code": predicted_class
                 })
@@ -163,7 +187,7 @@ def analyze_accent(audio_path):
         accents = [p["accent"] for p in predictions]
         most_common_accent = max(set(accents), key=accents.count)
         
-        english_confidences = [p["english_confidence"] for p in predictions if p["accent"] != "Other"]
+        english_confidences = [p["english_confidence"] for p in predictions]
         avg_english_confidence = np.mean(english_confidences) if english_confidences else 0.0
         avg_confidence = np.mean([p["confidence"] for p in predictions])
         language_codes = [p["language_code"] for p in predictions]
@@ -172,9 +196,9 @@ def analyze_accent(audio_path):
         
         summary = (
             f"The detected accent is {most_common_accent} with a confidence of {avg_confidence:.2f}%. "
-            f"The likelihood of an English-native accent (British, American, Australian, Irish) is {avg_english_confidence:.2f}%. "
+            f"The likelihood of an English-native accent (British, American, Australian, Irish, Canadian, New Zealand) is {avg_english_confidence:.2f}%. "
         )
-        if most_common_accent == "Other":
+        if avg_english_confidence < 50:
             summary += "The speaker's accent is less likely to be a native English accent."
         
         logger.info(f"Accent analysis complete: {most_common_accent}, {avg_english_confidence:.2f}%")
