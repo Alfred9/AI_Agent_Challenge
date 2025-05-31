@@ -406,7 +406,7 @@ def analyze_video_language_and_accent(audio_path):
         }
 
 # Streamlit UI
-st.title("Video Language & Accent Analysis Tool")
+st.title("Video Language & Accent Analysis Agent")
 st.markdown("Upload a public video URL (e.g., YouTube or direct MP4) to first detect the language, then analyze English accents if applicable.")
 
 video_url = st.text_input("Enter video URL:")
