@@ -121,7 +121,7 @@ def split_audio(audio_path, chunk_length_ms=30000):
         logger.error(f"Error splitting audio: {str(e)}")
         return [audio_path]
 
-# Fixed language detection function
+# Language detection function
 def detect_language(audio_path):
     try:
         logger.info("Starting language detection...")
