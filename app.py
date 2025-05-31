@@ -122,7 +122,7 @@ def split_audio(audio_path, chunk_length_ms=30000):
         return [audio_path]
 
 # Fixed language detection function
-def detect_language_with_softmax(audio_path):
+def detect_language(audio_path):
     try:
         logger.info("Starting language detection...")
         lang_model = load_language_model()
@@ -142,8 +142,16 @@ def detect_language_with_softmax(audio_path):
                     probs = F.softmax(out_prob, dim=-1)
                     confidence = float(probs[0][index[0]]) * 100
                 else:
-                    # Fallback if not a tensor
-                    confidence = float(score) * 100 if float(score) > 0 else abs(float(score)) * 100
+                    # Fallback: Try to get probability from out_prob array
+                    try:
+                        if hasattr(out_prob, 'numpy'):
+                            prob_array = out_prob.numpy()
+                        else:
+                            prob_array = out_prob
+                        confidence = float(prob_array[index[0]]) * 100
+                    except:
+                        # Last resort fallback
+                        confidence = float(score) * 100 if float(score) > 0 else abs(float(score)) * 100
                 
                 language_predictions.append({
                     "language": detected_language,
@@ -153,7 +161,6 @@ def detect_language_with_softmax(audio_path):
                 logger.error(f"Error processing language chunk {chunk_path}: {str(e)}")
                 continue
         
-        # Rest of the function remains the same...
         if not language_predictions:
             raise ValueError("No valid language predictions from audio chunks.")
         
@@ -181,7 +188,7 @@ def detect_language_with_softmax(audio_path):
         logger.error(f"Language detection failed: {str(e)}")
         return None, None, None, None
 
-#Accent analysis function
+# Accent analysis function
 def analyze_accent(audio_path):
     try:
         logger.info("Starting accent analysis...")
@@ -194,14 +201,25 @@ def analyze_accent(audio_path):
             logger.info(f"Processing chunk: {chunk_path}")
             try:
                 out_prob, score, index, text_lab = model.classify_file(chunk_path)
-                predicted_class = text_lab[0].lower()                
-                # Fix: Get actual probability instead of raw score
-                if hasattr(out_prob, 'numpy'):
-                    prob_array = out_prob.numpy()
-                else:
-                    prob_array = out_prob
+                predicted_class = text_lab[0].lower()
                 
-                confidence = float(prob_array[index[0]]) * 100
+                # Fix: Get actual probability instead of raw score
+                try:
+                    if torch.is_tensor(out_prob):
+                        import torch.nn.functional as F
+                        probs = F.softmax(out_prob, dim=-1)
+                        confidence = float(probs[0][index[0]]) * 100
+                        prob_array = probs[0].numpy() if hasattr(probs[0], 'numpy') else probs[0].detach().numpy()
+                    else:
+                        if hasattr(out_prob, 'numpy'):
+                            prob_array = out_prob.numpy()
+                        else:
+                            prob_array = out_prob
+                        confidence = float(prob_array[index[0]]) * 100
+                except Exception as conf_error:
+                    logger.warning(f"Confidence calculation failed: {conf_error}")
+                    confidence = abs(float(score)) * 100
+                    prob_array = None
                 
                 # Map model labels to desired accents
                 accent_map = {
@@ -233,12 +251,14 @@ def analyze_accent(audio_path):
                 # Get probability distribution and sum probabilities for English-speaking regions
                 english_accent_probability = 0.0
                 try:
-                    # Sum probabilities for all English-speaking regions
-                    for i in range(len(text_lab)):
-                        if text_lab[i].lower() in english_speaking_regions:
-                            english_accent_probability += float(prob_array[i])
-                    
-                    english_accent_probability *= 100  # Convert to percentage
+                    if prob_array is not None:
+                        # Sum probabilities for all English-speaking regions
+                        for i in range(len(text_lab)):
+                            if text_lab[i].lower() in english_speaking_regions:
+                                english_accent_probability += float(prob_array[i])
+                        english_accent_probability *= 100  # Convert to percentage
+                    else:
+                        raise Exception("No probability array available")
                     
                 except Exception as prob_error:
                     logger.warning(f"Could not extract probabilities: {prob_error}")
