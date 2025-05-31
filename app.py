@@ -24,7 +24,21 @@ try:
 except Exception as e:
     logger.warning(f"Failed to set torchaudio backend: {str(e)}")
 
-# Cache model
+# Cache models
+@st.cache_resource
+def load_language_model():
+    logger.info("Loading language identification model...")
+    try:
+        model = EncoderClassifier.from_hparams(
+            source="speechbrain/lang-id-voxlingua107-ecapa",
+            savedir="pretrained_models/lang-id-voxlingua107-ecapa"
+        )
+        logger.info("Language model loaded successfully.")
+        return model
+    except Exception as e:
+        logger.error(f"Failed to load language model: {str(e)}")
+        raise
+
 @st.cache_resource
 def load_accent_model():
     logger.info("Loading accent model...")
@@ -33,10 +47,10 @@ def load_accent_model():
             source="Jzuluaga/accent-id-commonaccent_ecapa",
             savedir="pretrained_models/accent-id-commonaccent_ecapa"
         )
-        logger.info("Model loaded successfully.")
+        logger.info("Accent model loaded successfully.")
         return model
     except Exception as e:
-        logger.error(f"Failed to load model: {str(e)}")
+        logger.error(f"Failed to load accent model: {str(e)}")
         raise
 
 # Function to probe video metadata
@@ -107,7 +121,60 @@ def split_audio(audio_path, chunk_length_ms=30000):
         logger.error(f"Error splitting audio: {str(e)}")
         return [audio_path]
 
-# Function to analyze accent
+# Function to detect language
+def detect_language(audio_path):
+    try:
+        logger.info("Starting language detection...")
+        lang_model = load_language_model()
+        
+        audio_chunks = split_audio(audio_path, chunk_length_ms=15000)  # Shorter chunks for language detection
+        language_predictions = []
+        
+        for chunk_path in audio_chunks:
+            logger.info(f"Processing chunk for language: {chunk_path}")
+            try:
+                out_prob, score, index, text_lab = lang_model.classify_file(chunk_path)
+                detected_language = text_lab[0].lower()
+                confidence = float(score) * 100
+                
+                language_predictions.append({
+                    "language": detected_language,
+                    "confidence": confidence
+                })
+            except Exception as e:
+                logger.error(f"Error processing language chunk {chunk_path}: {str(e)}")
+                continue
+        
+        if not language_predictions:
+            raise ValueError("No valid language predictions from audio chunks.")
+        
+        # Get most common language
+        languages = [p["language"] for p in language_predictions]
+        most_common_language = max(set(languages), key=languages.count)
+        avg_confidence = np.mean([p["confidence"] for p in language_predictions])
+        
+        # Check if English is detected with reasonable confidence
+        english_chunks = [p for p in language_predictions if p["language"] == "en"]
+        english_ratio = len(english_chunks) / len(language_predictions)
+        
+        logger.info(f"Language detection complete: {most_common_language}, confidence: {avg_confidence:.2f}%")
+        logger.info(f"English ratio: {english_ratio:.2f}")
+        
+        # Clean up language detection chunks
+        try:
+            for chunk_path in audio_chunks:
+                if os.path.exists(chunk_path) and chunk_path != audio_path:
+                    os.remove(chunk_path)
+        except Exception as e:
+            logger.warning(f"Language chunk cleanup failed: {str(e)}")
+        
+        return most_common_language, avg_confidence, english_ratio, language_predictions
+        
+    except Exception as e:
+        logger.error(f"Language detection failed: {str(e)}")
+        return None, None, None, None
+
+# Function to analyze accent (only for English)
 def analyze_accent(audio_path):
     try:
         logger.info("Starting accent analysis...")
@@ -215,31 +282,123 @@ def analyze_accent(audio_path):
         except Exception as e:
             logger.warning(f"Chunk cleanup failed: {str(e)}")
 
+# Main analysis function
+def analyze_video_language_and_accent(audio_path):
+    # First, detect language
+    language, lang_confidence, english_ratio, lang_predictions = detect_language(audio_path)
+    
+    if not language:
+        return None, None, "Language detection failed."
+    
+    # Language mapping for display
+    language_names = {
+        "en": "English", "fr": "French", "es": "Spanish", "de": "German", 
+        "it": "Italian", "pt": "Portuguese", "ru": "Russian", "zh": "Chinese",
+        "ja": "Japanese", "ko": "Korean", "ar": "Arabic", "hi": "Hindi",
+        "th": "Thai", "vi": "Vietnamese", "tr": "Turkish", "pl": "Polish",
+        "nl": "Dutch", "sv": "Swedish", "da": "Danish", "no": "Norwegian",
+        "fi": "Finnish", "he": "Hebrew", "cs": "Czech", "hu": "Hungarian"
+    }
+    
+    language_display = language_names.get(language, language.capitalize())
+    
+    # Check if primarily English
+    if language == "en" and english_ratio >= 0.6:  # At least 60% of chunks detected as English
+        logger.info("English detected, proceeding with accent analysis...")
+        accent, accent_confidence, accent_summary = analyze_accent(audio_path)
+        
+        if accent and accent_confidence is not None:
+            return {
+                "type": "english_with_accent",
+                "language": language_display,
+                "language_confidence": lang_confidence,
+                "accent": accent,
+                "accent_confidence": accent_confidence,
+                "summary": accent_summary
+            }
+        else:
+            return {
+                "type": "english_only",
+                "language": language_display,
+                "language_confidence": lang_confidence,
+                "summary": f"English detected with {lang_confidence:.2f}% confidence, but accent analysis failed."
+            }
+    
+    # Check for mixed languages (some English detected)
+    elif english_ratio > 0.2:  # Some English detected (>20% of chunks)
+        logger.info("Mixed language detected, performing accent analysis on English portions...")
+        accent, accent_confidence, accent_summary = analyze_accent(audio_path)
+        
+        return {
+            "type": "mixed_language",
+            "primary_language": language_display,
+            "language_confidence": lang_confidence,
+            "english_ratio": english_ratio,
+            "accent": accent if accent else "Unable to determine",
+            "accent_confidence": accent_confidence if accent_confidence else 0,
+            "summary": f"Mixed language detected: Primarily {language_display} ({lang_confidence:.1f}% confidence) with {english_ratio*100:.1f}% English content. " +
+                      (accent_summary if accent else "English accent could not be determined.")
+        }
+    
+    # Non-English language
+    else:
+        return {
+            "type": "non_english",
+            "language": language_display,
+            "language_confidence": lang_confidence,
+            "summary": f"Non-English language detected: {language_display} with {lang_confidence:.2f}% confidence. No accent analysis performed as this is not primarily English speech."
+        }
+
 # Streamlit UI
-st.title("Video Accent Analysis Agent")
-st.markdown("Upload a public video URL (e.g., YouTube or direct MP4) to analyze the speaker's accent.")
+st.title("Video Language & Accent Analysis Agent")
+st.markdown("Upload a public video URL (e.g., YouTube or direct MP4) to first detect the language, then analyze English accents if applicable.")
 
 video_url = st.text_input("Enter video URL:")
 if st.button("Analyze"):
     if video_url:
         with st.spinner("Downloading video and extracting audio..."):
             audio_path, temp_dir = download_and_extract_audio(video_url)
+        
         if audio_path:
-            with st.spinner("Analyzing accent..."):
-                accent, confidence, summary = analyze_accent(audio_path)
-                if accent and confidence is not None:
+            with st.spinner("Analyzing language and accent..."):
+                result = analyze_video_language_and_accent(audio_path)
+                
+                if result:
                     st.success("Analysis complete!")
-                    st.write(f"**Detected Accent**: {accent}")
-                    st.write(f"**English Accent Confidence**: {confidence:.2f}%")
-                    st.write(f"**Summary**:")
-                    st.markdown(summary)
+                    
+                    if result["type"] == "english_with_accent":
+                        st.write(f"**Language Detected**: {result['language']} ({result['language_confidence']:.1f}% confidence)")
+                        st.write(f"**Detected Accent**: {result['accent']}")
+                        st.write(f"**English Accent Confidence**: {result['accent_confidence']:.2f}%")
+                        st.write(f"**Summary**: {result['summary']}")
+                        
+                    elif result["type"] == "mixed_language":
+                        st.write(f"**Primary Language**: {result['primary_language']} ({result['language_confidence']:.1f}% confidence)")
+                        st.write(f"**English Content**: {result['english_ratio']*100:.1f}% of audio")
+                        if result['accent'] != "Unable to determine":
+                            st.write(f"**English Accent Detected**: {result['accent']}")
+                            st.write(f"**English Accent Confidence**: {result['accent_confidence']:.2f}%")
+                        st.write(f"**Summary**: {result['summary']}")
+                        
+                    elif result["type"] == "non_english":
+                        st.warning("Non-English Language Detected")
+                        st.write(f"**Language Detected**: {result['language']} ({result['language_confidence']:.1f}% confidence)")
+                        st.write(f"**Summary**: {result['summary']}")
+                        
+                    else:  # english_only with failed accent analysis
+                        st.write(f"**Language Detected**: {result['language']} ({result['language_confidence']:.1f}% confidence)")
+                        st.write(f"**Summary**: {result['summary']}")
+                    
+                    # Cleanup
                     try:
                         os.remove(audio_path)
-                        os.remove(os.path.join(temp_dir, "video.mp4"))
+                        video_file = os.path.join(temp_dir, "video.mp4")
+                        if os.path.exists(video_file):
+                            os.remove(video_file)
                         os.rmdir(temp_dir)
                     except Exception as e:
                         logger.warning(f"Cleanup failed: {str(e)}")
                 else:
-                    st.error("Failed to analyze the accent. Please try another video.")
+                    st.error("Failed to analyze the audio. Please try another video.")
     else:
         st.warning("Please enter a valid video URL.")
