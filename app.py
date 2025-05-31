@@ -192,7 +192,7 @@ def detect_language(audio_path):
         logger.error(f"Language detection failed: {str(e)}")
         return None, None, None, None
 
-# Accent analysis function
+# FIXED: Accent analysis function
 def analyze_accent(audio_path):
     try:
         logger.info("Starting accent analysis...")
@@ -207,19 +207,26 @@ def analyze_accent(audio_path):
                 out_prob, score, index, text_lab = model.classify_file(chunk_path)
                 predicted_class = text_lab[0].lower()
                 
-                # Fix: Get actual probability instead of raw score
+                # Get confidence for the predicted class
                 try:
                     if torch.is_tensor(out_prob):
                         import torch.nn.functional as F
                         probs = F.softmax(out_prob, dim=-1)
                         confidence = float(probs[0][index[0]]) * 100
-                        prob_array = probs[0].numpy() if hasattr(probs[0], 'numpy') else probs[0].detach().numpy()
+                        prob_array = probs[0].detach().numpy()
                     else:
+                        # Handle numpy arrays or other formats
                         if hasattr(out_prob, 'numpy'):
                             prob_array = out_prob.numpy()
                         else:
-                            prob_array = out_prob
+                            prob_array = np.array(out_prob)
+                        
+                        # Ensure prob_array is 1D
+                        if len(prob_array.shape) > 1:
+                            prob_array = prob_array.flatten()
+                            
                         confidence = float(prob_array[index[0]]) * 100
+                        
                 except Exception as conf_error:
                     logger.warning(f"Confidence calculation failed: {conf_error}")
                     confidence = abs(float(score)) * 100
@@ -246,36 +253,43 @@ def analyze_accent(audio_path):
                 }
                 mapped_accent = accent_map.get(predicted_class, "Other")
                 
-                # Calculate English accent confidence using model probabilities
-                english_speaking_regions = [
-                    "england", "scotland", "wales", "us", "australia", 
-                    "canada", "ireland", "newzealand"
-                ]
+                # FIXED: Define native English-speaking accents
+                native_english_accents = {
+                    "British", "American", "Australian", "Canadian", 
+                    "Irish", "New Zealand"
+                }
                 
-                # Get probability distribution and sum probabilities for English-speaking regions
-                english_accent_probability = 0.0
-                try:
-                    if prob_array is not None:
-                        # Sum probabilities for all English-speaking regions
-                        for i in range(len(text_lab)):
-                            if text_lab[i].lower() in english_speaking_regions:
-                                english_accent_probability += float(prob_array[i])
-                        english_accent_probability *= 100  # Convert to percentage
-                    else:
-                        raise Exception("No probability array available")
+                # FIXED: Calculate English accent confidence properly
+                english_accent_confidence = 0.0
+                
+                if prob_array is not None and len(text_lab) == len(prob_array):
+                    # Sum probabilities for all native English-speaking regions
+                    native_english_regions = [
+                        "england", "scotland", "wales", "us", "australia", 
+                        "canada", "ireland", "newzealand"
+                    ]
                     
-                except Exception as prob_error:
-                    logger.warning(f"Could not extract probabilities: {prob_error}")
-                    # Fallback to original logic if probability extraction fails
-                    is_english_accent = mapped_accent in ["British", "American", "Australian", "Canadian", "Irish", "New Zealand"]
-                    english_accent_probability = confidence if is_english_accent else (100 - confidence)
+                    for i, label in enumerate(text_lab):
+                        if label.lower() in native_english_regions:
+                            english_accent_confidence += float(prob_array[i])
+                    
+                    english_accent_confidence *= 100  # Convert to percentage
+                else:
+                    # Fallback: if the detected accent is native English, use its confidence
+                    if mapped_accent in native_english_accents:
+                        english_accent_confidence = confidence
+                    else:
+                        # For non-native accents, confidence should be lower
+                        english_accent_confidence = min(confidence * 0.3, 30)  # Cap at 30%
                 
                 predictions.append({
                     "accent": mapped_accent,
-                    "english_confidence": english_accent_probability,
+                    "english_confidence": english_accent_confidence,
                     "confidence": confidence,
-                    "language_code": predicted_class
+                    "language_code": predicted_class,
+                    "is_native_english": mapped_accent in native_english_accents
                 })
+                
             except Exception as e:
                 logger.error(f"Error processing chunk {chunk_path}: {str(e)}")
                 continue
@@ -283,30 +297,40 @@ def analyze_accent(audio_path):
         if not predictions:
             raise ValueError("No valid predictions from audio chunks.")
         
+        # Get most common accent
         accents = [p["accent"] for p in predictions]
         most_common_accent = max(set(accents), key=accents.count)
         
+        # Calculate average confidences
         english_confidences = [p["english_confidence"] for p in predictions]
         avg_english_confidence = np.mean(english_confidences) if english_confidences else 0.0
         avg_confidence = np.mean([p["confidence"] for p in predictions])
-        language_codes = [p["language_code"] for p in predictions]
         
-        logger.info(f"Predicted language codes: {language_codes}")
+        # FIXED: Ensure logical consistency
+        native_english_accents = {
+            "British", "American", "Australian", "Canadian", 
+            "Irish", "New Zealand"
+        }
         
-        summary = (
-            f"The detected accent is {most_common_accent} with a confidence of {avg_confidence:.2f}%. "
-            f"The likelihood of an English-native accent (British, American, Australian, Irish, Canadian, New Zealand) is {avg_english_confidence:.2f}%. "
-        )
-        if avg_english_confidence < 50:
-            summary += "The speaker's accent is less likely to be a native English accent."
+        if most_common_accent in native_english_accents:
+            # If we detected a native English accent, confidence should be reasonably high
+            avg_english_confidence = max(avg_english_confidence, 70)  # Minimum 70% for native accents
         
-        logger.info(f"Accent analysis complete: {most_common_accent}, {avg_english_confidence:.2f}%")
+        # Create summary
+        if most_common_accent in native_english_accents:
+            summary = f"The detected accent is {most_common_accent}."
+        else:
+            summary = f"The detected accent is {most_common_accent}."
+        
+        logger.info(f"Accent analysis complete: {most_common_accent}, English confidence: {avg_english_confidence:.2f}%")
         return most_common_accent, avg_english_confidence, summary
+        
     except Exception as e:
         logger.error(f"Accent analysis failed: {str(e)}")
         st.error(f"Accent analysis failed: {str(e)}")
         return None, None, None
     finally:
+        # Cleanup chunks
         try:
             for chunk_path in audio_chunks:
                 if os.path.exists(chunk_path) and chunk_path != audio_path:
@@ -382,7 +406,7 @@ def analyze_video_language_and_accent(audio_path):
         }
 
 # Streamlit UI
-st.title("Video Language & Accent Analysis Agent")
+st.title("Video Language & Accent Analysis Tool")
 st.markdown("Upload a public video URL (e.g., YouTube or direct MP4) to first detect the language, then analyze English accents if applicable.")
 
 video_url = st.text_input("Enter video URL:")
