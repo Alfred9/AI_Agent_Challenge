@@ -35,8 +35,10 @@ This application performs intelligent two-stage analysis of video content:
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/Alfred9/AI_Agent_Challenge.git
-   cd AI_Agent_Challenge
+   git clone https://github.com/Alfred9/Video_Accent_Analysis_Agent
+.git
+   cd Video_Accent_Analysis_Agent
+
    ```
 
 2. **Install dependencies**:
